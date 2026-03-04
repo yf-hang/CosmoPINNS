@@ -1,62 +1,65 @@
 <html>
 <body bgcolor="#F5F5DC">
-<STYLE TYPE='text/css'>
-a:link {color:blue; text-decoration:none}
-a:visited {text-decoration:none;}
-a:active {color:red; text-decoration:none}
-a:hover {color:red; text-decoration:none; position:relative; left:1px; top:1px} 
-</STYLE>
 
-<div><h2>Epsilon as input (new)</h2></div>
-<BLOCKQUOTE>
+<div><h4>Loss</h4></div>
 <table border="0">
-    <tr>
-        <td><a href="./results/eps_input/c_15.html" target="_blank"><p style="font-family:arial;color:maroon;font-size:27px;"> c = 5.0 </p></a></td>
-    </tr>
+<tr>
+	<td>
+		<img src="./results/P1_total_loss_eps_all.png" width="300" height="200">
+	</td>
+	<td>
+		<img src="./results/P2_total_loss_eps_all.png" width="300" height="200">
+	</td>
+	<td>
+		<img src="./results/P3_total_loss_eps_all.png" width="300" height="200">
+	</td>
+</tr>
 </table>
-</BLOCKQUOTE>
 
-<div><h2>Epsilon = -1.05</h2></div>
-<div><h3>BC Points</h3></div>
-<div>
-	<img src="./results/eps_m1_05/nb_105.png" width="450" height="300">
-</div>
-
-<BLOCKQUOTE>
+<div><h4>relative L1 error</h4></div>
 <table border="0">
-    <tr>
-        <td><a href="./results/eps_m1_05/c_5.html" target="_blank"><p style="font-family:arial;color:maroon;font-size:27px;"> c = 5.0 </p></a></td>
-    </tr>
-	<tr>
-        <td><a href="./results/eps_m1_05/c_13.html" target="_blank"><p style="font-family:arial;color:maroon;font-size:27px;"> c = 13.0 </p></a></td>
-    </tr>
-	<tr>
-        <td><a href="./results/eps_m1_05/c_17.html" target="_blank"><p style="font-family:arial;color:maroon;font-size:27px;"> c = 17.0 </p></a></td>
-    </tr>
-    <tr>
-        <td><a href="./results/eps_m1_05/c_25.html" target="_blank"><p style="font-family:arial;color:maroon;font-size:27px;"> c = 25.0 </p></a></td>
-    </tr>
+<tr>
+	<td>
+		<img src="./results/P1_RelL1_eps_all.png" width="300" height="200">
+	</td>
+	<td>
+		<img src="./results/P2_RelL1_eps_all.png" width="300" height="200">
+	</td>
+	<td>
+		<img src="./results/P3_RelL1_eps_all.png" width="300" height="200">
+	</td>
+</tr>
 </table>
-</BLOCKQUOTE>
 
-
-<div><h2>-3.2 < Epsilon < 0.2</h2></div>
-<div><h3>BC Points</h3></div>
-<div>
-	<img src="./results/eps_all/nb_105.png" width="450" height="300">
-</div>
-<BLOCKQUOTE>
+<div><h4>relative L2 error</h4></div>
 <table border="0">
-    <tr>
-        <td><a href="./results/eps_all/c_1.html" target="_blank"><p style="font-family:arial;color:maroon;font-size:27px;"> c = 1.0 </p></a></td>
-    </tr>
-    <tr>
-        <td><a href="./results/eps_all/c_20.html" target="_blank"><p style="font-family:arial;color:maroon;font-size:27px;"> c = 20.0 </p></a></td>
-    </tr>
+<tr>
+	<td>
+		<img src="./results/P1_RelL2_eps_all.png" width="300" height="200">
+	</td>
+	<td>
+		<img src="./results/P2_RelL2_eps_all.png" width="300" height="200">
+	</td>
+	<td>
+		<img src="./results/P3_RelL2_eps_all.png" width="300" height="200">
+	</td>
+</tr>
 </table>
-</BLOCKQUOTE>
 
+<div><h4>log ratio</h4></div>
+<table border="0">
+<tr>
+	<td>
+		<img src="./results/P1_LogRatio_eps_all.png" width="300" height="200">
+	</td>
+	<td>
+		<img src="./results/P2_LogRatio_eps_all.png" width="300" height="200">
+	</td>
+	<td>
+		<img src="./results/P3_LogRatio_eps_all.png" width="300" height="200">
+	</td>
+</tr>
+</table>
 
-<div><h2>Transfer Learning</h2></div>
-<td><a href="./results/eps_m1_05/transfer.html" target="_blank"><p style="font-family:arial;color:maroon;font-size:27px;"> 2-Site: Chain -> One-loop Bubble </p></a></td>
 </html>
+
