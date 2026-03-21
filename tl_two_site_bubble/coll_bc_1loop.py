@@ -1,6 +1,15 @@
+import math
+from concurrent.futures import ProcessPoolExecutor
+
 import numpy as np
 import torch
-from concurrent.futures import ProcessPoolExecutor
+
+try:
+    from scipy.special import spence as _scipy_spence
+except Exception:
+    _scipy_spence = None
+
+from two_site_chain.sol_chain import eps_to_n_int
 
 from tl_two_site_bubble.sol_1loop import (
     I1_fin,
@@ -36,6 +45,166 @@ def _complex_to_output_channels(function_complex: np.ndarray, output_part="both"
     if part == "re":
         return np.real(function_complex)
     return np.imag(function_complex)
+
+
+_EPS_TOL = 1e-12
+
+
+def _build_ws_tensor(x_coll: torch.Tensor, *, cy_val: float):
+    if x_coll.ndim != 2:
+        raise ValueError(f"x_coll must be 2D, got shape {tuple(x_coll.shape)}")
+    if int(x_coll.shape[1]) not in (3, 4):
+        raise ValueError(f"x_coll must have 3 or 4 columns, got shape {tuple(x_coll.shape)}")
+
+    x_core = x_coll[:, :3].to(dtype=torch.float64)
+    x1, x2, y1 = x_core.unbind(dim=1)
+    c = torch.tensor(float(cy_val), dtype=torch.float64, device=x_coll.device)
+
+    w1 = x1 + y1 + c
+    w2 = x2 + y1 + c
+    w3 = x1 + y1 - c
+    w4 = x2 + y1 - c
+    w5 = x1 - y1 + c
+    w6 = x2 - y1 + c
+    w7 = x1 - y1 - c
+    w8 = x2 - y1 - c
+    w9 = x1 + x2 + 2.0 * y1
+    w10 = x1 + x2 + 2.0 * c
+    w11 = x1 + x2
+    return w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11
+
+
+def _polylog2_complex_np(z):
+    if _scipy_spence is None:
+        raise RuntimeError("scipy.special.spence is unavailable.")
+    z_arr = np.asarray(z, dtype=np.complex128)
+    return _scipy_spence(1.0 - z_arr)
+
+
+def _torch_re_to_output_channels(re_vals: torch.Tensor, output_part="both") -> torch.Tensor:
+    part = _normalize_output_part(output_part)
+    if part == "both":
+        return torch.cat([re_vals, torch.zeros_like(re_vals)], dim=1)
+    if part == "re":
+        return re_vals
+    return torch.zeros_like(re_vals)
+
+
+def _fast_p2_target_eps0(
+    x_coll: torch.Tensor,
+    *,
+    cy_val: float,
+    output_part: str,
+) -> torch.Tensor:
+    if _scipy_spence is None:
+        raise RuntimeError("SciPy is required for the eps=0 1-loop fast path.")
+
+    x_np = x_coll[:, :3].detach().cpu().numpy().astype(np.float64, copy=False)
+    x1 = x_np[:, 0]
+    x2 = x_np[:, 1]
+    y1 = x_np[:, 2]
+    c = float(cy_val)
+
+    w1 = x1 + y1 + c
+    w2 = x2 + y1 + c
+    w3 = x1 + y1 - c
+    w4 = x2 + y1 - c
+    w5 = x1 - y1 + c
+    w6 = x2 - y1 + c
+    w7 = x1 - y1 - c
+    w8 = x2 - y1 - c
+    w9 = x1 + x2 + 2.0 * y1
+    w10 = x1 + x2 + 2.0 * c
+    w11 = x1 + x2
+
+    w1c = np.asarray(w1, dtype=np.complex128)
+    w2c = np.asarray(w2, dtype=np.complex128)
+    w3c = np.asarray(w3, dtype=np.complex128)
+    w4c = np.asarray(w4, dtype=np.complex128)
+    w5c = np.asarray(w5, dtype=np.complex128)
+    w6c = np.asarray(w6, dtype=np.complex128)
+    w7c = np.asarray(w7, dtype=np.complex128)
+    w8c = np.asarray(w8, dtype=np.complex128)
+    w9c = np.asarray(w9, dtype=np.complex128)
+    w10c = np.asarray(w10, dtype=np.complex128)
+    w11c = np.asarray(w11, dtype=np.complex128)
+
+    i1 = (
+        -(np.pi ** 2) / 6.0
+        + _polylog2_complex_np(w3c / w1c)
+        + _polylog2_complex_np(w4c / w2c)
+        - _polylog2_complex_np((w3c * w4c) / (w1c * w2c))
+        + _polylog2_complex_np(w5c / w1c)
+        + _polylog2_complex_np(w6c / w2c)
+        - _polylog2_complex_np((w5c * w6c) / (w1c * w2c))
+        - _polylog2_complex_np(w7c / w1c)
+        - _polylog2_complex_np(w8c / w2c)
+        + _polylog2_complex_np((w7c * w8c) / (w1c * w2c))
+    )
+    i2 = np.log(w9c / w2c)
+    i3 = np.log(w10c / w2c)
+    i4 = -np.log(w11c / w2c)
+    i5 = np.log(w9c / w1c)
+    i6 = np.log(w10c / w1c)
+    i7 = -np.log(w11c / w1c)
+    ones = np.ones_like(w1c)
+    i8 = ones
+    i9 = ones
+    i10 = -ones
+
+    function_complex = np.stack((i1, i2, i3, i4, i5, i6, i7, i8, i9, i10), axis=1)
+    function_concat = _complex_to_output_channels(function_complex, output_part=output_part)
+    return torch.tensor(function_concat, dtype=torch.float32, device=x_coll.device)
+
+
+def _fast_p2_target_negative_int(
+    x_coll: torch.Tensor,
+    *,
+    cy_val: float,
+    eps_val: float,
+    output_part: str,
+) -> torch.Tensor:
+    n = eps_to_n_int(float(eps_val))
+    if n is None:
+        raise ValueError(f"Fast 1-loop negative-integer target path expects eps=-n, got eps={eps_val}.")
+
+    w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11 = _build_ws_tensor(x_coll, cy_val=cy_val)
+    comb_2n_n = float(math.comb(2 * n, n))
+
+    def _int_series_sum(w_main, w_main2):
+        acc = torch.zeros_like(w_main)
+        for k in range(n):
+            acc = acc + float(math.comb(n + k, k)) * torch.pow(w_main, k) * torch.pow(w_main2, n - k - 1)
+        return acc
+
+    s29 = _int_series_sum(w2, w9)
+    s19 = _int_series_sum(w1, w9)
+    s210 = _int_series_sum(w2, w10)
+    s110 = _int_series_sum(w1, w10)
+    s211 = _int_series_sum(w2, w11)
+    s111 = _int_series_sum(w1, w11)
+
+    i2 = -(w3 / (torch.pow(w2, n) * torch.pow(w9, 2 * n))) * s29
+    i5 = -(w4 / (torch.pow(w1, n) * torch.pow(w9, 2 * n))) * s19
+    i3 = -(w5 / (torch.pow(w2, n) * torch.pow(w10, 2 * n))) * s210
+    i6 = -(w6 / (torch.pow(w1, n) * torch.pow(w10, 2 * n))) * s110
+    i4 = (w7 / (torch.pow(w2, n) * torch.pow(w11, 2 * n))) * s211
+    i7 = (w8 / (torch.pow(w1, n) * torch.pow(w11, 2 * n))) * s111
+    i8 = comb_2n_n / torch.pow(w9, 2 * n)
+    i9 = comb_2n_n / torch.pow(w10, 2 * n)
+    i10 = -comb_2n_n / torch.pow(w11, 2 * n)
+    i1 = (
+        1.0 / (torch.pow(w1, n) * torch.pow(w2, n))
+        + (i2 + i5 - i8)
+        + (i3 + i6 - i9)
+        + (i4 + i7 - i10)
+    )
+
+    re_vals = torch.stack((i1, i2, i3, i4, i5, i6, i7, i8, i9, i10), dim=1)
+    return _torch_re_to_output_channels(re_vals, output_part=output_part).to(
+        dtype=torch.float32,
+        device=x_coll.device,
+    )
 
 
 def _eval_1loop_chunk(x_chunk, cy_val):
@@ -115,7 +284,28 @@ def compute_function_target_from_xcoll_1loop(
     chunk_size=2000,
     parallel_min_points=5000,
 ) -> torch.Tensor:
-    x_np = to_numpy(x_coll)
+    output_part = _normalize_output_part(output_part)
+    if isinstance(x_coll, torch.Tensor):
+        x_tensor = x_coll
+    else:
+        x_tensor = torch.as_tensor(x_coll, dtype=torch.float32)
+
+    if abs(float(eps_val)) < _EPS_TOL and _scipy_spence is not None:
+        return _fast_p2_target_eps0(
+            x_tensor,
+            cy_val=float(cy_val),
+            output_part=output_part,
+        )
+
+    if eps_to_n_int(float(eps_val)) is not None:
+        return _fast_p2_target_negative_int(
+            x_tensor,
+            cy_val=float(cy_val),
+            eps_val=float(eps_val),
+            output_part=output_part,
+        )
+
+    x_np = to_numpy(x_tensor)
 
     if x_np.ndim != 2:
         raise ValueError(f"x_coll must be 2D tensor/array, got shape {x_np.shape}")
@@ -139,7 +329,7 @@ def compute_function_target_from_xcoll_1loop(
     )
     function_concat = _complex_to_output_channels(function_complex, output_part=output_part)
 
-    return torch.tensor(function_concat, dtype=torch.float32, device=x_coll.device)
+    return torch.tensor(function_concat, dtype=torch.float32, device=x_tensor.device)
 
 
 def build_inputs_and_boundary_1loop(
@@ -303,6 +493,20 @@ def build_inputs_and_boundary_1loop(
             f"filtered {n_bad_total} / {bc_complex.shape[0]} boundary points "
             f"(non-finite={n_bad_nonfinite}, |value|>{bc_abs_cap:g}={n_bad_large})."
         )
+        if (not np.any(keep_mask)) and np.any(finite_mask):
+            print(
+                "[warn] build_inputs_and_boundary_1loop: "
+                "all finite boundary points exceeded bc_abs_cap; "
+                "keeping finite points and bypassing the magnitude cap for this batch."
+            )
+            keep_mask = finite_mask
+
+        if not np.any(keep_mask):
+            raise ValueError(
+                "build_inputs_and_boundary_1loop: no valid boundary points remain after filtering. "
+                "All sampled boundary targets are non-finite. Check the domain, eps, or analytic target builder."
+            )
+
         x_b_all = x_b_all[keep_mask]
         bc_complex = bc_complex[keep_mask]
 
