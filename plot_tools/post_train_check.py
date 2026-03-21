@@ -35,6 +35,9 @@ def post_train_check(
         if log_fn is not None:
             log_fn(msg)
 
+    def _to_metric_dtype(x: torch.Tensor) -> torch.Tensor:
+        return x.to(dtype=torch.float64)
+
     def _quantile_max_summary(vals: torch.Tensor) -> str:
         flat = vals.reshape(-1)
         finite = flat[torch.isfinite(flat)]
@@ -71,11 +74,12 @@ def post_train_check(
             eps_val=eps_global,
         )
     else:
-        true = precomputed_true.to(device=x_coll.device, dtype=torch.float32)
+        true = precomputed_true.to(device=x_coll.device)
+    true = _to_metric_dtype(true)
 
     model.eval()
     with torch.no_grad():
-        pred = model(x_coll) / float(pred_scale)
+        pred = _to_metric_dtype(model(x_coll) / float(pred_scale))
 
     output_part = _normalize_output_part(output_part)
 
@@ -116,8 +120,8 @@ def post_train_check(
             _emit("note: true.mean abs is tiny; relative % can be inflated by denominator scale.")
 
         with torch.no_grad():
-            pred_b = model(x_b_tensor) / float(pred_scale)
-            true_b = bc_target
+            pred_b = _to_metric_dtype(model(x_b_tensor) / float(pred_scale))
+            true_b = _to_metric_dtype(bc_target)
             if pred_b.ndim != 2 or true_b.ndim != 2 or pred_b.shape != true_b.shape:
                 _emit(f"\n[{phase_name} | BC {part_label} check]")
                 _emit("skip: incompatible BC tensor shapes")
@@ -221,8 +225,8 @@ def post_train_check(
         _emit("note: true.mean abs is tiny; relative % can be inflated by denominator scale.")
 
     with torch.no_grad():
-        pred_b = model(x_b_tensor) / float(pred_scale)
-        true_b = bc_target
+        pred_b = _to_metric_dtype(model(x_b_tensor) / float(pred_scale))
+        true_b = _to_metric_dtype(bc_target)
         diff_b = pred_b - true_b
 
     abs_l1_b = diff_b.abs().sum()

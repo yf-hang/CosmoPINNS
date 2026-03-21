@@ -32,7 +32,13 @@ def get_results_root_name() -> str:
     return _RESULTS_ROOT_NAME
 
 
-def get_nested_save_dir(save_dir: str, cy: float, phase: int = 1, phase_tag: str = None):
+def get_nested_save_dir(
+    save_dir: str,
+    cy: float,
+    phase: int = 1,
+    phase_tag: str = None,
+    create_dir: bool = True,
+):
     here = os.path.dirname(os.path.abspath(__file__))   # .../plot_tools
     project_root = os.path.dirname(here)                # .../
     results_root_abs = os.path.join(project_root, _RESULTS_ROOT_NAME)
@@ -47,7 +53,8 @@ def get_nested_save_dir(save_dir: str, cy: float, phase: int = 1, phase_tag: str
     phase_folder = f"{phase_prefix}_{cy_folder}"
 
     abs_dir = os.path.join(results_root_abs, phase_folder, save_dir)
-    os.makedirs(abs_dir, exist_ok=True)
+    if create_dir:
+        os.makedirs(abs_dir, exist_ok=True)
 
     short = os.path.join(_RESULTS_ROOT_NAME, phase_folder, save_dir)
 
